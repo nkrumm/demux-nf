@@ -1,8 +1,18 @@
 import groovy.json.JsonSlurper
 import groovy.json.JsonOutput
 
+params.demux_output_path = "s3://uwlm-ngs-demux/"
+params.sample_output_path = "s3://uwlm-ngs-data/samples/"
+
+def demux_uuid = params.task_arn ?: UUID.randomUUID().toString()
+def demux_output_path = "${params.demux_bucket.replaceAll('[/]*$', '')}/${params.run_id}/${demux_uuid}/"
+def sample_output_path = params.sample_output_path
+
 process preflight {
     container "nkrumm/nextflow-demux:latest"
+
+    publishDir demux_output_path, mode: 'copy', overwrite: 'true'
+
     input:
         file(samplesheet) from Channel.fromPath(params.samplesheet)
     output:
@@ -38,9 +48,9 @@ process demux {
     cpus 30
     memory '68 GB'
     container "nkrumm/nextflow-demux:latest"
-    publishDir params.output_path, pattern: 'output/Reports', mode: 'copy', saveAs: {f -> f.replaceFirst("output/", "")}, overwrite: true
-    publishDir params.output_path, pattern: 'output/Stats', mode: 'copy', saveAs: {f -> f.replaceFirst("output/", "")}, overwrite: true
-    publishDir params.output_path, pattern: 'output/*.fastq.gz', mode: 'copy', overwrite: true // these are the "Undetermined" fastq.gz files
+    publishDir demux_output_path, pattern: 'output/Reports', mode: 'copy', saveAs: {f -> f.replaceFirst("output/", "")}, overwrite: true
+    publishDir demux_output_path, pattern: 'output/Stats', mode: 'copy', saveAs: {f -> f.replaceFirst("output/", "")}, overwrite: true
+    publishDir demux_output_path, pattern: 'output/*.fastq.gz', mode: 'copy', overwrite: true // these are the "Undetermined" fastq.gz files
 
     input:
         file(samplesheet) from samplesheet_ch
@@ -58,7 +68,7 @@ process demux {
         merge_lanes = params.merge_lanes ? "--no-lane-splitting" : ""
         """
         mkdir -p ${rundir}
-        aws s3 sync --only-show-errors ${params.run_folder} ${rundir}
+        aws s3 sync --only-show-errors ${params.run_folder.replaceAll('[/]*$', '')} ${rundir}
 
         if [ -f ${rundir}/Data.tar ]; then
          tar xf ${rundir}/Data.tar -C ${rundir}/
@@ -234,7 +244,7 @@ process fastqc {
     memory '4 GB'
     container 'quay.io/biocontainers/fastqc:0.11.8--1'
 
-    publishDir params.output_path, pattern: "*.html", mode: "copy", overwrite: true
+    publishDir demux_output_path, pattern: "*.html", mode: "copy", overwrite: true
     
     input:
         set key, path("fastq??.fq.gz"), config from fastqc_in_ch
@@ -257,20 +267,19 @@ process finalize_libraries {
     container "nkrumm/nextflow-demux:latest"
     cpus 2
     memory '4 GB'
-    // consider moving the code to put final libraries here
-    // would handle external s3 destinations (+ multiple destinations)
-    // would not confound fastqc step above
-    // would be an extra copy/move of the data (as an extra process)
-    // would handle final s3 tagging to specify lifecyle policies
-    publishDir params.output_path, pattern: "**.fastq.gz", mode: "copy", overwrite: true
+    // Todo: handle external s3 destinations (+ multiple destinations)
+    // Todo: handle final s3 tagging to specify lifecyle policies
+    
+    publishDir sample_output_path, pattern: "**.fastq.gz", mode: "copy", overwrite: true
+    
     input:
         set key, file(fastqs), config from finalize_libraries_in_ch
     output:
-        path("libraries/**.fastq.gz")
+        path("**.fastq.gz")
     script: 
         lane = key[0] // note this is either the lane number or "all" if params.merge_lanes == true
         readgroup = "${params.fcid}.${lane}.${config.index}-${config.index2}"
-        library_path = "libraries/${config.Sample_Name}/${config.library_type}/${readgroup}"
+        library_path = "${config.Sample_Name}/${config.library_type}/${readgroup}"
         if (fastqs.size() == 2)
             """
             mkdir -p ${library_path}
@@ -314,7 +323,10 @@ process multiqc {
         //file('*') from trim_reads_report_ch.collect()
     output:
        file "multiqc_report.${params.fcid}.html"
-    publishDir params.output_path, saveAs: {f -> "multiqc/${f}"}, mode: "copy", overwrite: true
+       path("multiqc_report.${params.fcid}_data/*")
+
+    publishDir demux_output_path, saveAs: {f -> "multiqc/${f}"}, mode: "copy", overwrite: true
+
     script:
         """
         multiqc -v --filename "multiqc_report.${params.fcid}.html" .
