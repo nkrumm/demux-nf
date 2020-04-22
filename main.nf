@@ -14,15 +14,17 @@ process preflight {
     memory '68 GB'
 
     script:
-        umi_options = params.is_umi ? "--is-umi " : ""
+        umi_options = params.basemask != "" ? "--is-umi --basemask ${params.basemask}" : ""
         fwd_adapter = params.fwd_adapter ? "--fwd-adapter ${params.fwd_adapter}" : ""
         rev_adapter = params.rev_adapter ? "--rev-adapter ${params.rev_adapter}" : ""
+        merge_lanes = params.merge_lanes ? "--merge-lanes" : ""
         """
         parse_samplesheet.py \
             --input ${samplesheet} \
             --output ${params.run_id} \
             --project-name ${params.project_name} \
             --library-type ${params.library_type} \
+            ${merge_lanes} \
             ${umi_options} \
             ${fwd_adapter} ${rev_adapter}
         """
@@ -53,7 +55,7 @@ process demux {
     script:
         rundir = "inputs/${params.run_id}"
         basemask = demux_config.basemask ? "--use-bases-mask " + demux_config.basemask : ""
-
+        merge_lanes = params.merge_lanes ? "--no-lane-splitting" : ""
         """
         mkdir -p ${rundir}
         aws s3 sync --only-show-errors ${params.run_folder} ${rundir}
@@ -70,9 +72,11 @@ process demux {
             --min-log-level WARNING \
             --ignore-missing-positions \
             --ignore-missing-bcls \
+            --ignore-missing-filter \
             --barcode-mismatches 0,0 \
             --create-fastq-for-index-reads \
             ${basemask} \
+            ${merge_lanes} \
             --mask-short-adapter-reads 0
         """
 }
@@ -80,25 +84,38 @@ process demux {
 demux_fastq_out_ch.flatMap()
     // process output directories from bcl2fastq and re-associate them with config entries
     // we need a key of (lane, project_name, sample_id) to map back to the nested config file.
-    .filter { path -> !("${path.getName()}" =~ /^Undetermined_S0_L/) } // first filter ignore Undetermined read files
+    .view()
+    .filter { path -> !("${path.getName()}" =~ /^Undetermined_S0_/) } // first filter ignore Undetermined read files
     .filter { path -> !("${path.getName()}" =~ /I\d_001.fastq.gz$/) } // filter out indexing reads
+    .view()
     .map { path -> 
-          def filename = path.getName() // gets filename
-          def tokens = path.toString().tokenize('/') // tokenize path
-          def lane_re = filename =~ /(?!L00)(\d)(?=_R\d_001.fastq.gz)/ // matches L00? in the filename for the lane.
-          def lane = lane_re[0][0] // weird groovy way to get first match
-          def project = tokens.get(tokens.size() - 2) // Project_Name
-          //def sample_id = tokens.get(tokens.size() - 2) // Sample_ID
-          def sample_id_re = filename =~ /(.*)(?=_S[\d]*_L00\d_.*.fastq.gz)/
-          def sample_id = sample_id_re[0][0]
-          def key = tuple(lane, project, sample_id)
+          def (filename, project_name, rest) = path.toString().tokenize('/').reverse() // tokenize path
+          if (params.merge_lanes){
+            // if bcl2fastq was run with --no-lane-splitting, no lane token will be availabe in filename
+            // e.g., "294R09-A02-MONCv1-NA12878_S1_I1_001.fastq.gz"
+            (extension, read_num, sample_num, sample_id) = filename.tokenize("_").reverse()
+            lane = "all"
+          } else {
+            // otherwise, if lanes are split token will be availabe in filename
+            // e.g., "294R09-A02-MONCv1-NA12878_S1_L001_I1_001.fastq.gz"
+            (extension, read_num, lane, sample_num, sample_id) = filename.tokenize("_").reverse()
+            lane = lane.replaceAll("L00", "") // just use lane number
+          }
+          def key = tuple(lane, project_name, sample_id)
           return tuple(key, path)
-         }
+    }
+    .view()
     .groupTuple() // group FASTQ files by key
     .map { key, files -> 
           // attach config information
           def c = demux_config.lanes[key[0]][key[1]][key[2]]
-          [key, files, c] 
+          if (c.is_umi){
+            // if umi, read 2 is the UMI read, and read 3 is the reverse read, so re-order appropriately
+            [key, [files[0], files[2], files[1]], c] 
+          } else {
+            // for non-umi read 1 and read 2 are ordered sequentially
+            [key, [files[0], files[1]], c] 
+          }
          } 
     .view{ JsonOutput.prettyPrint(JsonOutput.toJson(it[2])) } // diagnostic print'
     .branch { 
@@ -110,14 +127,35 @@ demux_fastq_out_ch.flatMap()
 
 
 process postprocess_umi {
+    container "nkrumm/nextflow-demux:latest"
     echo true
+    cpus 4
+    memory '7 GB'
     input:
         set key, file(fastqs), config from postprocess_ch.umi_true
     output:
-        set key, file(fastqs), config into umi_out_ch
+        set key, file("processed/*.fastq.gz"), config into umi_out_ch
     script:
+        fastq1 = fastqs[0]
+        fastq2 = fastqs[1]
+        umi = fastqs[2]
         """
-        echo UMI $fastqs
+        mkdir -p processed/
+        paste \
+            <(zcat ${fastq1}) \
+            <(zcat ${umi}) \
+            | awk 'NR%4==1{readname=\$1}
+                   NR%4==2{seq=\$1; umi=\$2}
+                   NR%4==0 {print readname " RX:Z:"umi"\\n"seq"\\n+\\n"\$1;}' \
+            | gzip > processed/1.fastq.gz ;
+
+        paste \
+            <(zcat ${fastq2}) \
+            <(zcat ${umi}) \
+            | awk 'NR%4==1{readname=\$1}
+                   NR%4==2{seq=\$1; umi=\$2}
+                   NR%4==0 {print readname " RX:Z:"umi"\\n"seq"\\n+\\n"\$1;}' \
+            | gzip > processed/2.fastq.gz ;
         """
 }
 
@@ -179,11 +217,11 @@ process trim {
 trim_out_ch.mix(trim_in_ch.trim_false)
     .into { qc_in_ch; finalize_libraries_in_ch }
 
-if (params.qc_merge_lanes){
+if (params.merge_lanes || params.qc_merge_lanes){
     // merge together lanes in QC step
     // group by sample project + sample ID (omits lane from the key)
-    qc_in_ch.map{ key, files, config -> [["all_lanes", key[1], key[2]], files, config]}
-            .groupTuple()
+    qc_in_ch.map{ key, files, config -> [["all", key[1], key[2]], files, config]}
+            .groupTuple(size: demux_config.number_of_lanes, remainder: true)
             .map{ key, files, config -> [key, files.flatten(), config[0]] }
             .set{ fastqc_in_ch }
 } else {
@@ -199,25 +237,20 @@ process fastqc {
     publishDir params.output_path, pattern: "*.html", mode: "copy", overwrite: true
     
     input:
-        set key, file(fastqs), config from fastqc_in_ch
+        set key, path("fastq??.fq.gz"), config from fastqc_in_ch
     output:
         path "fastqc/*", type:"dir" into fastqc_report_ch
    
     script:
-        lane = key[0] // could be a number or "all_lanes" if qc_merge_lanes is true (see above) 
+        lane = key[0] // could be a number or "all" if qc_merge_lanes is true (see above) 
         readgroup = "${params.fcid}.${lane}.${config.index}-${config.index2}"
         sample_name = config.Sample_Name //"${config.Sample_Name}:${config.library_type}:${readgroup}:${lane}"
         fastqc_path = "fastqc/${sample_name}/"
-        if (fastqs.size() == 2)
-            """
-            mkdir -p ${fastqc_path}
-            zcat ${fastqs[0]} ${fastqs[1]} | fastqc --quiet -o ${fastqc_path} stdin:${sample_name}
-            """
-        else
-            """
-            mkdir -p ${fastqc_path}
-            zcat ${fastqs[0]} | fastqc --quiet -o ${fastqc_path} stdin:${sample_name}
-            """
+        
+        """
+        mkdir -p ${fastqc_path}
+        zcat fastq*.fq.gz | fastqc --quiet -o ${fastqc_path} stdin:${sample_name}
+        """
 }   
 
 process finalize_libraries {
@@ -235,7 +268,7 @@ process finalize_libraries {
     output:
         path("libraries/**.fastq.gz")
     script: 
-        lane = key[0] // note this is always the lane number, we don't store merged lanes.
+        lane = key[0] // note this is either the lane number or "all" if params.merge_lanes == true
         readgroup = "${params.fcid}.${lane}.${config.index}-${config.index2}"
         library_path = "libraries/${config.Sample_Name}/${config.library_type}/${readgroup}"
         if (fastqs.size() == 2)
@@ -276,7 +309,7 @@ process multiqc {
     cpus 4
     input:
         path('*') from fastqc_report_ch.flatMap().collect()
-        file("Stats.json") from stats_json_multiqc
+        //file("Stats.json") from stats_json_multiqc
         path("interop/*") from interop_output
         //file('*') from trim_reads_report_ch.collect()
     output:

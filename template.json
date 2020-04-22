@@ -35,8 +35,18 @@
       "default": "",
       "type": "string"
     },
+    "basemask": {
+      "title": "Demux using UMI and basemask",
+      "default": "",
+      "type": "string"
+    },
+    "merge_lanes": {
+      "default": true,
+      "title": "Merge lanes for FASTQ output?",
+      "type": "boolean"
+    },
     "qc_merge_lanes": {
-      "default": false,
+      "default": true,
       "title": "Merge lanes during QC analysis?",
       "type": "boolean"
     }
