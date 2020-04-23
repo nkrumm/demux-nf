@@ -129,7 +129,7 @@ demux_fastq_out_ch.flatMap()
             }
           }
     } 
-    .view{ JsonOutput.prettyPrint(JsonOutput.toJson(it)) } // diagnostic print'
+    .view()
     .branch { 
         // send files to postprocess_ch.umi_true if is_umi is set.
         umi_true: it[2].is_umi
