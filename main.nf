@@ -5,7 +5,7 @@ params.demux_output_path = "s3://uwlm-ngs-demux/"
 params.sample_output_path = "s3://uwlm-ngs-data/samples/"
 
 def demux_uuid = params.task_arn ?: UUID.randomUUID().toString()
-def demux_output_path = "${params.demux_bucket.replaceAll('[/]*$', '')}/${params.run_id}/${demux_uuid}/"
+def demux_output_path = "${params.demux_output_path.replaceAll('[/]*$', '')}/${params.run_id}/${demux_uuid}/"
 def sample_output_path = params.sample_output_path
 
 process preflight {
