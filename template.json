@@ -60,8 +60,7 @@
     "fcid",
     "run_id",
     "run_folder",
-    "samplesheet",
-    "output_path"
+    "samplesheet"
   ],
   "type": "object"
 }
