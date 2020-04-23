@@ -94,10 +94,8 @@ process demux {
 demux_fastq_out_ch.flatMap()
     // process output directories from bcl2fastq and re-associate them with config entries
     // we need a key of (lane, project_name, sample_id) to map back to the nested config file.
-    .view()
     .filter { path -> !("${path.getName()}" =~ /^Undetermined_S0_/) } // first filter ignore Undetermined read files
     .filter { path -> !("${path.getName()}" =~ /I\d_001.fastq.gz$/) } // filter out indexing reads
-    .view()
     .map { path -> 
           def (filename, project_name, rest) = path.toString().tokenize('/').reverse() // tokenize path
           if (params.merge_lanes){
@@ -114,7 +112,6 @@ demux_fastq_out_ch.flatMap()
           def key = tuple(lane, project_name, sample_id)
           return tuple(key, path)
     }
-    .view()
     .groupTuple() // group FASTQ files by key
     .map { key, files -> 
           // attach config information
@@ -124,10 +121,15 @@ demux_fastq_out_ch.flatMap()
             [key, [files[0], files[2], files[1]], c] 
           } else {
             // for non-umi read 1 and read 2 are ordered sequentially
-            [key, [files[0], files[1]], c] 
+            if (files.size() == 2){
+                [key, [files[0], files[1]], c] 
+            } else {
+                // Single-end, do nothing
+                [key, files, c] 
+            }
           }
-         } 
-    .view{ JsonOutput.prettyPrint(JsonOutput.toJson(it[2])) } // diagnostic print'
+    } 
+    .view{ JsonOutput.prettyPrint(JsonOutput.toJson(it)) } // diagnostic print'
     .branch { 
         // send files to postprocess_ch.umi_true if is_umi is set.
         umi_true: it[2].is_umi
