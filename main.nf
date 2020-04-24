@@ -1,7 +1,7 @@
 import groovy.json.JsonSlurper
 import groovy.json.JsonOutput
 
-params.demux_output_path = "s3://uwlm-ngs-demux/"
+params.demux_output_path = "s3://uwlm-ngs-data/demux/"
 params.sample_output_path = "s3://uwlm-ngs-data/samples/"
 
 def demux_uuid = params.task_arn ?: UUID.randomUUID().toString()
