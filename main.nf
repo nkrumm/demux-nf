@@ -3,10 +3,11 @@ import groovy.json.JsonOutput
 
 params.demux_output_path = "s3://uwlm-ngs-data/demux/"
 params.sample_output_path = "s3://uwlm-ngs-data/samples/"
+params.downstream_git_repo = null
 
 def demux_uuid = params.task_arn ?: UUID.randomUUID().toString()
 def demux_output_path = "${params.demux_output_path.replaceAll('[/]*$', '')}/${params.run_id}/${demux_uuid}/"
-def sample_output_path = params.sample_output_path
+def sample_output_path = params.sample_output_path.replaceAll('[/]*$', '')
 
 process preflight {
     container "nkrumm/nextflow-demux:latest"
@@ -272,29 +273,37 @@ process finalize_libraries {
     // Todo: handle external s3 destinations (+ multiple destinations)
     // Todo: handle final s3 tagging to specify lifecyle policies
     
-    publishDir sample_output_path, pattern: "**.fastq.gz", mode: "copy", overwrite: true
-    
     input:
         set key, file(fastqs), config from finalize_libraries_in_ch
     output:
-        path("**.fastq.gz")
+        set key, fastq_list, config into downstream_kickoff_ch
     script: 
         lane = key[0] // note this is either the lane number or "all" if params.merge_lanes == true
         readgroup = "${params.fcid}.${lane}.${config.index}-${config.index2}"
-        library_path = "${config.Sample_Name}/${config.library_type}/${readgroup}"
-        if (fastqs.size() == 2)
-            """
-            mkdir -p ${library_path}
-            mv ${fastqs[0]} ${library_path}/1.fastq.gz
-            mv ${fastqs[1]} ${library_path}/2.fastq.gz
-            """
-        else
-            """
-            mkdir -p ${library_path}
-            mv ${fastqs[0]} ${library_path}/1.fastq.gz
-            """
+        library_path = "${sample_output_path}/${config.Sample_Name}/${config.library_type}/"
+        """
+        aws sync --only-show-errors . ${library_path}/${readgroup}/
+        """
 }
 
+process downstream_kickoff {
+    container "nkrumm/nextflow-demux:latest"
+    cpus 1
+    memory '4 GB'
+    
+    input:
+        processed_samples from downstream_kickoff_ch.collect()
+    output:
+    
+    when:
+        params.downstream_git_repo != null
+
+    script:
+        n_samples = processed_samples.size()
+        """
+        echo "downstream kickoff of ${n_samples} samples to ${params.downstream_git_repo}"
+        """
+}
 
 process interop {
     container 'quay.io/biocontainers/illumina-interop:1.1.8--hfc679d8_0'
