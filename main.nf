@@ -292,7 +292,7 @@ process downstream_kickoff {
     memory '4 GB'
     
     input:
-        processed_samples from downstream_kickoff_ch.collect()
+        set val(processed_samples) from downstream_kickoff_ch.collect()
     output:
     
     when:
