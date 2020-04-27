@@ -40,9 +40,14 @@ def parse_samplesheet(args):
     df["is_umi"] = args.is_umi
     df["fwd_adapter"] = args.fwd_adapter
     df["rev_adapter"] = args.rev_adapter
-    if ("Lane" not in df) or (args.merge_lanes):
+    if args.merge_lanes:
         log.info("Merging samples across all lanes!")
         df["Lane"] = "all"
+    else:
+        if "Lane" not in df:
+            log.error("No lanes specified in SampleSheet.csv; use --merge-lanes or update sample sheet.")
+            sys.exit(1)
+
     df["Sample_Project"] = args.project_name
     df["library_type"] = args.library_type
     
