@@ -106,8 +106,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--input', help='Input sample sheet to parse.')
-    parser.add_argument('--output', help='Output prefix for files')
+    parser.add_argument('--input', required=True, help='Input sample sheet to parse.')
+    parser.add_argument('--output', required=True, help='Output prefix for files')
     parser.add_argument('--is-umi', action='store_true', default=False)
     parser.add_argument('--merge-lanes', action='store_true', default=False)
     parser.add_argument('--basemask', help='Basemask string to use for UMI demultiplex', default='Y146,I8Y9,I8,Y146')
