@@ -279,7 +279,7 @@ process finalize_libraries {
     input:
         set key, file(fastqs), config from finalize_libraries_in_ch
     output:
-        set key, fastq_list, config into downstream_kickoff_ch
+        set key, file("*.fastq.gz"), config into downstream_kickoff_ch
     script: 
         lane = key[0] // note this is either the lane number or "all" if params.merge_lanes == true
         readgroup = "${params.fcid}.${lane}.${config.index}-${config.index2}"
