@@ -54,6 +54,16 @@
       "default": true,
       "title": "Merge lanes during QC analysis?",
       "type": "boolean"
+    },
+    "downstream_git_repo": {
+      "default": "",
+      "title": "Git repository of downstream analysis",
+      "type": "string"
+    },
+    "downstream_git_repo_tag": {
+      "default": "",
+      "title": "Git commit/tag/branch of downstream analysis",
+      "type": "string"
     }
   },
   "required": [
