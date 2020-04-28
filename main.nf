@@ -312,8 +312,23 @@ process downstream_kickoff {
 
     script:
         n_samples = processed_samples.size()
+        downstream_params = groovy.json.JsonOutput.toJson([
+            "samples": processed_samples, 
+            "fcid": params.fcid
+        ])
         """
-        echo "downstream kickoff of ${n_samples} samples to ${params.downstream_git_repo} @ ${params.downstream_git_repo_tag}"
+        #!/usr/bin/env python3
+        import requests
+        data = {
+            "api_key": "${params.api_key}",
+            "git_url": "${params.downstream_git_repo}",
+            "git_hash": "${params.downstream_git_repo_hash}",
+            "nextflow_profile": "${workflow.profile}",
+            "nextflow_workdir": "${workflow.workDir}",
+            "nextflow_params": "${downstream_params}"
+        }        
+        r = requests.post("${params.api_endpoint}", data=data)
+        print(r)
         """
 }
 
