@@ -276,18 +276,20 @@ process finalize_libraries {
     input:
         set key, file(fastqs), config from finalize_libraries_in_ch
     output:
-        set key, file("*.fastq.gz"), config into downstream_kickoff_ch
+        tuple key, out_fastqs, config into downstream_kickoff_ch
     script: 
         lane = key[0] // note this is either the lane number or "all" if params.merge_lanes == true
         readgroup = "${params.fcid}.${lane}.${config.index}-${config.index2}"
         library_path = "${sample_output_path}/${config.Sample_Name}/${config.library_type}"
         if (fastqs.size() == 2)
+            out_fastqs = ["${library_path}/1.fastq.gz", "${library_path}/2.fastq.gz"]
             """
             mv ${fastqs[0]} 1.fastq.gz
             mv ${fastqs[1]} 2.fastq.gz
             aws s3 sync --only-show-errors --exclude "*" --include "*.fastq.gz" . ${library_path}/${readgroup}/
             """
         else
+            out_fastqs = ["${library_path}/1.fastq.gz"]
             """
             mv ${fastqs[0]} 1.fastq.gz
             aws s3 sync --only-show-errors --exclude "*" --include "*.fastq.gz" . ${library_path}/${readgroup}/
@@ -300,7 +302,7 @@ process downstream_kickoff {
     memory '4 GB'
     
     input:
-        set val(processed_samples) from downstream_kickoff_ch.collect()
+        val(processed_samples) from downstream_kickoff_ch.toList()
     output:
     
     when:
