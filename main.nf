@@ -318,6 +318,7 @@ process downstream_kickoff {
         """
         #!/usr/bin/env python3
         import requests
+        import json
         data = {
             "api_key": "${params.api_key}",
             "git_url": "${params.downstream_git_repo}",
