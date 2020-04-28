@@ -4,7 +4,6 @@ import groovy.json.JsonOutput
 params.demux_output_path = "s3://uwlm-ngs-data/demux/"
 params.sample_output_path = "s3://uwlm-ngs-data/samples/"
 params.downstream_git_repo = null
-params.test_mode = false
 
 def demux_uuid = params.task_arn ?: UUID.randomUUID().toString()
 def demux_output_path = "${params.demux_output_path.replaceAll('[/]*$', '')}/${params.run_id}/${demux_uuid}/"
@@ -68,7 +67,6 @@ process demux {
         rundir = "inputs/${params.run_id}"
         basemask = demux_config.basemask ? "--use-bases-mask " + demux_config.basemask : ""
         merge_lanes = params.merge_lanes ? "--no-lane-splitting" : ""
-        test_mode_options = params.test_mode ? "--tiles s_1_000[0-9]" : ""
         """
         mkdir -p ${rundir}
         aws s3 sync --only-show-errors ${params.run_folder.replaceAll('[/]*$', '')} ${rundir}
@@ -90,7 +88,6 @@ process demux {
             --create-fastq-for-index-reads \
             ${basemask} \
             ${merge_lanes} \
-            ${test_mode_options} \
             --mask-short-adapter-reads 0
         """
 }
