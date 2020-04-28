@@ -4,7 +4,7 @@ import groovy.json.JsonOutput
 params.demux_output_path = "s3://uwlm-ngs-data/demux/"
 params.sample_output_path = "s3://uwlm-ngs-data/samples/"
 params.downstream_git_repo = null
-params.downstream_git_repo_tag = "master"
+params.downstream_git_repo_hash = "master"
 
 def demux_uuid = params.task_arn ?: UUID.randomUUID().toString()
 def demux_output_path = "${params.demux_output_path.replaceAll('[/]*$', '')}/${params.run_id}/${demux_uuid}/"

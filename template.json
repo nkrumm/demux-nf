@@ -60,7 +60,7 @@
       "title": "Git repository of downstream analysis",
       "type": "string"
     },
-    "downstream_git_repo_tag": {
+    "downstream_git_repo_hash": {
       "default": "",
       "title": "Git commit/tag/branch of downstream analysis",
       "type": "string"
