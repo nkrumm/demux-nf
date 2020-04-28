@@ -282,19 +282,20 @@ process finalize_libraries {
         lane = key[0] // note this is either the lane number or "all" if params.merge_lanes == true
         readgroup = "${params.fcid}.${lane}.${config.index}-${config.index2}"
         library_path = "${sample_output_path}/${config.Sample_Name}/${config.library_type}"
-        if (fastqs.size() == 2)
+        if (fastqs.size() == 2) {
             out_fastqs = ["${library_path}/1.fastq.gz", "${library_path}/2.fastq.gz"]
             """
             mv ${fastqs[0]} 1.fastq.gz
             mv ${fastqs[1]} 2.fastq.gz
             aws s3 sync --only-show-errors --exclude "*" --include "*.fastq.gz" . ${library_path}/${readgroup}/
             """
-        else
+        } else {
             out_fastqs = ["${library_path}/1.fastq.gz"]
             """
             mv ${fastqs[0]} 1.fastq.gz
             aws s3 sync --only-show-errors --exclude "*" --include "*.fastq.gz" . ${library_path}/${readgroup}/
             """
+        }
 }
 
 process downstream_kickoff {
