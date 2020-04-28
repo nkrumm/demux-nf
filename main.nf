@@ -311,7 +311,6 @@ process downstream_kickoff {
         params.downstream_git_repo != null
 
     script:
-        n_samples = processed_samples.size()
         downstream_params = groovy.json.JsonOutput.toJson([
             "samples": processed_samples, 
             "fcid": params.fcid
@@ -326,9 +325,13 @@ process downstream_kickoff {
             "nextflow_profile": "${workflow.profile}",
             "nextflow_workdir": "${workflow.workDir}",
             "nextflow_params": '${downstream_params}'
-        }        
-        r = requests.post("${params.api_endpoint}", data=data)
-        print(r)
+        }
+        r = requests.post("${params.api_endpoint}/api/v1/workflow", 
+                data=json.dumps(data).encode('utf-8'),
+                headers = {
+                  'Accept': 'application/json',
+                  'Content-Type': 'application/json'})
+        print(r.text)
         """
 }
 
