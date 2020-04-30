@@ -1,8 +1,20 @@
 import groovy.json.JsonSlurper
 import groovy.json.JsonOutput
 
+params.demux_output_path = "s3://uwlm-ngs-data/demux/"
+params.sample_output_path = "s3://uwlm-ngs-data/samples/"
+params.downstream_git_repo = null
+params.downstream_git_repo_hash = "master"
+
+def demux_uuid = params.task_arn ?: UUID.randomUUID().toString()
+def demux_output_path = "${params.demux_output_path.replaceAll('[/]*$', '')}/${params.run_id}/${demux_uuid}/"
+def sample_output_path = params.sample_output_path.replaceAll('[/]*$', '')
+
 process preflight {
     container "nkrumm/nextflow-demux:latest"
+
+    publishDir demux_output_path, mode: 'copy', overwrite: 'true'
+
     input:
         file(samplesheet) from Channel.fromPath(params.samplesheet)
     output:
@@ -14,7 +26,7 @@ process preflight {
     memory '68 GB'
 
     script:
-        umi_options = params.basemask != "" ? "--is-umi --basemask ${params.basemask}" : ""
+        umi_options = params.basemask ? "--is-umi --basemask ${params.basemask}" : ""
         fwd_adapter = params.fwd_adapter ? "--fwd-adapter ${params.fwd_adapter}" : ""
         rev_adapter = params.rev_adapter ? "--rev-adapter ${params.rev_adapter}" : ""
         merge_lanes = params.merge_lanes ? "--merge-lanes" : ""
@@ -38,9 +50,9 @@ process demux {
     cpus 30
     memory '68 GB'
     container "nkrumm/nextflow-demux:latest"
-    publishDir params.output_path, pattern: 'output/Reports', mode: 'copy', saveAs: {f -> f.replaceFirst("output/", "")}, overwrite: true
-    publishDir params.output_path, pattern: 'output/Stats', mode: 'copy', saveAs: {f -> f.replaceFirst("output/", "")}, overwrite: true
-    publishDir params.output_path, pattern: 'output/*.fastq.gz', mode: 'copy', overwrite: true // these are the "Undetermined" fastq.gz files
+    publishDir demux_output_path, pattern: 'output/Reports', mode: 'copy', saveAs: {f -> f.replaceFirst("output/", "")}, overwrite: true
+    publishDir demux_output_path, pattern: 'output/Stats', mode: 'copy', saveAs: {f -> f.replaceFirst("output/", "")}, overwrite: true
+    publishDir demux_output_path, pattern: 'output/*.fastq.gz', mode: 'copy', overwrite: true // these are the "Undetermined" fastq.gz files
 
     input:
         file(samplesheet) from samplesheet_ch
@@ -58,7 +70,7 @@ process demux {
         merge_lanes = params.merge_lanes ? "--no-lane-splitting" : ""
         """
         mkdir -p ${rundir}
-        aws s3 sync --only-show-errors ${params.run_folder} ${rundir}
+        aws s3 sync --only-show-errors ${params.run_folder.replaceAll('[/]*$', '')} ${rundir}
 
         if [ -f ${rundir}/Data.tar ]; then
          tar xf ${rundir}/Data.tar -C ${rundir}/
@@ -84,10 +96,8 @@ process demux {
 demux_fastq_out_ch.flatMap()
     // process output directories from bcl2fastq and re-associate them with config entries
     // we need a key of (lane, project_name, sample_id) to map back to the nested config file.
-    .view()
     .filter { path -> !("${path.getName()}" =~ /^Undetermined_S0_/) } // first filter ignore Undetermined read files
     .filter { path -> !("${path.getName()}" =~ /I\d_001.fastq.gz$/) } // filter out indexing reads
-    .view()
     .map { path -> 
           def (filename, project_name, rest) = path.toString().tokenize('/').reverse() // tokenize path
           if (params.merge_lanes){
@@ -104,7 +114,6 @@ demux_fastq_out_ch.flatMap()
           def key = tuple(lane, project_name, sample_id)
           return tuple(key, path)
     }
-    .view()
     .groupTuple() // group FASTQ files by key
     .map { key, files -> 
           // attach config information
@@ -114,10 +123,15 @@ demux_fastq_out_ch.flatMap()
             [key, [files[0], files[2], files[1]], c] 
           } else {
             // for non-umi read 1 and read 2 are ordered sequentially
-            [key, [files[0], files[1]], c] 
+            if (files.size() == 2){
+                [key, [files[0], files[1]], c] 
+            } else {
+                // Single-end, do nothing
+                [key, files, c] 
+            }
           }
-         } 
-    .view{ JsonOutput.prettyPrint(JsonOutput.toJson(it[2])) } // diagnostic print'
+    } 
+    .view()
     .branch { 
         // send files to postprocess_ch.umi_true if is_umi is set.
         umi_true: it[2].is_umi
@@ -234,7 +248,7 @@ process fastqc {
     memory '4 GB'
     container 'quay.io/biocontainers/fastqc:0.11.8--1'
 
-    publishDir params.output_path, pattern: "*.html", mode: "copy", overwrite: true
+    publishDir demux_output_path, pattern: "*.html", mode: "copy", overwrite: true
     
     input:
         set key, path("fastq??.fq.gz"), config from fastqc_in_ch
@@ -257,33 +271,70 @@ process finalize_libraries {
     container "nkrumm/nextflow-demux:latest"
     cpus 2
     memory '4 GB'
-    // consider moving the code to put final libraries here
-    // would handle external s3 destinations (+ multiple destinations)
-    // would not confound fastqc step above
-    // would be an extra copy/move of the data (as an extra process)
-    // would handle final s3 tagging to specify lifecyle policies
-    publishDir params.output_path, pattern: "**.fastq.gz", mode: "copy", overwrite: true
+    // Todo: handle external s3 destinations (+ multiple destinations)
+    // Todo: handle final s3 tagging to specify lifecyle policies
+    
     input:
         set key, file(fastqs), config from finalize_libraries_in_ch
     output:
-        path("libraries/**.fastq.gz")
+        tuple key, out_fastqs, config into downstream_kickoff_ch
     script: 
         lane = key[0] // note this is either the lane number or "all" if params.merge_lanes == true
         readgroup = "${params.fcid}.${lane}.${config.index}-${config.index2}"
-        library_path = "libraries/${config.Sample_Name}/${config.library_type}/${readgroup}"
-        if (fastqs.size() == 2)
+        library_path = "${sample_output_path}/${config.Sample_Name}/${config.library_type}"
+        if (fastqs.size() == 2) {
+            out_fastqs = ["${library_path}/1.fastq.gz", "${library_path}/2.fastq.gz"]
             """
-            mkdir -p ${library_path}
-            mv ${fastqs[0]} ${library_path}/1.fastq.gz
-            mv ${fastqs[1]} ${library_path}/2.fastq.gz
+            mv ${fastqs[0]} 1.fastq.gz
+            mv ${fastqs[1]} 2.fastq.gz
+            aws s3 sync --only-show-errors --exclude "*" --include "*.fastq.gz" . ${library_path}/${readgroup}/
             """
-        else
+        } else {
+            out_fastqs = ["${library_path}/1.fastq.gz"]
             """
-            mkdir -p ${library_path}
-            mv ${fastqs[0]} ${library_path}/1.fastq.gz
+            mv ${fastqs[0]} 1.fastq.gz
+            aws s3 sync --only-show-errors --exclude "*" --include "*.fastq.gz" . ${library_path}/${readgroup}/
             """
+        }
 }
 
+process downstream_kickoff {
+    container "nkrumm/nextflow-demux:latest"
+    cpus 1
+    memory '4 GB'
+    
+    input:
+        val(processed_samples) from downstream_kickoff_ch.toList()
+    output:
+    
+    when:
+        params.downstream_git_repo != null
+
+    script:
+        downstream_params = groovy.json.JsonOutput.toJson([
+            "samples": processed_samples, 
+            "fcid": params.fcid
+        ])
+        """
+        #!/usr/bin/env python3
+        import requests
+        import json
+        data = {
+            "api_key": "${params.api_key}",
+            "git_url": "${params.downstream_git_repo}",
+            "git_hash": "${params.downstream_git_repo_hash}",
+            "nextflow_profile": "${workflow.profile}",
+            "nextflow_workdir": "${workflow.workDir}",
+            "nextflow_params": '${downstream_params}'
+        }
+        r = requests.post("${params.api_endpoint}/api/v1/workflow", 
+                data=json.dumps(data).encode('utf-8'),
+                headers = {
+                  'Accept': 'application/json',
+                  'Content-Type': 'application/json'})
+        print(r.text)
+        """
+}
 
 process interop {
     container 'quay.io/biocontainers/illumina-interop:1.1.8--hfc679d8_0'
@@ -314,7 +365,10 @@ process multiqc {
         //file('*') from trim_reads_report_ch.collect()
     output:
        file "multiqc_report.${params.fcid}.html"
-    publishDir params.output_path, saveAs: {f -> "multiqc/${f}"}, mode: "copy", overwrite: true
+       path("multiqc_report.${params.fcid}_data/*")
+
+    publishDir demux_output_path, saveAs: {f -> "multiqc/${f}"}, mode: "copy", overwrite: true
+
     script:
         """
         multiqc -v --filename "multiqc_report.${params.fcid}.html" .

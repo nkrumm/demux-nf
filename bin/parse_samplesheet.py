@@ -40,9 +40,14 @@ def parse_samplesheet(args):
     df["is_umi"] = args.is_umi
     df["fwd_adapter"] = args.fwd_adapter
     df["rev_adapter"] = args.rev_adapter
-    if ("Lane" not in df) or (args.merge_lanes):
+    if args.merge_lanes:
         log.info("Merging samples across all lanes!")
         df["Lane"] = "all"
+    else:
+        if "Lane" not in df:
+            log.error("No lanes specified in SampleSheet.csv; use --merge-lanes or update sample sheet.")
+            sys.exit(1)
+
     df["Sample_Project"] = args.project_name
     df["library_type"] = args.library_type
     
@@ -106,8 +111,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--input', help='Input sample sheet to parse.')
-    parser.add_argument('--output', help='Output prefix for files')
+    parser.add_argument('--input', required=True, help='Input sample sheet to parse.')
+    parser.add_argument('--output', required=True, help='Output prefix for files')
     parser.add_argument('--is-umi', action='store_true', default=False)
     parser.add_argument('--merge-lanes', action='store_true', default=False)
     parser.add_argument('--basemask', help='Basemask string to use for UMI demultiplex', default='Y146,I8Y9,I8,Y146')

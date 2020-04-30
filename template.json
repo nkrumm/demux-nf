@@ -2,27 +2,32 @@
   "properties": {
     "fcid": {
       "title": "Illumina Flowcell ID",
-      "default": "H7NFYBCX3",
+      "default": "AHGCYJBGXF",
       "type": "string"
     },
     "run_id": {
       "title": "Run ID (run folder name)",
-      "default": "200124_NCGL3_0603_H7NFYBCX3",
+      "default": "200411_NB502000_0379_AHGCYJBGXF",
       "type": "string"
     },
     "run_folder": {
       "title": "S3 path to folder containing Illumina run output",
-      "default": "s3://uwlm-personal/nkrumm/200124_NCGL3_0603_H7NFYBCX3",
+      "default": "s3://uwlm-ngs-runs/200411_NB502000_0379_AHGCYJBGXF/",
       "type": "string"
     },
     "samplesheet": {
       "title": "Illumina sample sheet",
-      "default": "s3://uwlm-personal/nkrumm/demux-test/SampleSheet.converted.csv",
+      "default": "s3://uwlm-ngs-runs/200411_NB502000_0379_AHGCYJBGXF/SampleSheet.csv",
       "type": "string"
     },
-    "output_path": {
-      "title": "S3 path for output",
-      "default": "s3://uwlm-personal/nkrumm/demux-test/publish/",
+    "demux_output_path": {
+      "title": "S3 path for demux and QC output (run id and uuid will appended)",
+      "default": "s3://uwlm-ngs-demux/",
+      "type": "string"
+    },
+    "sample_output_path": {
+      "title": "S3 root for sample(s) output",
+      "default": "s3://uwlm-ngs-data/samples/",
       "type": "string"
     },
     "fwd_adapter": {
@@ -49,14 +54,23 @@
       "default": true,
       "title": "Merge lanes during QC analysis?",
       "type": "boolean"
+    },
+    "downstream_git_repo": {
+      "default": "",
+      "title": "Git repository of downstream analysis",
+      "type": "string"
+    },
+    "downstream_git_repo_hash": {
+      "default": "",
+      "title": "Git commit/tag/branch of downstream analysis",
+      "type": "string"
     }
   },
   "required": [
     "fcid",
     "run_id",
     "run_folder",
-    "samplesheet",
-    "output_path"
+    "samplesheet"
   ],
   "type": "object"
 }
