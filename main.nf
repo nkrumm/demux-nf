@@ -324,7 +324,7 @@ process downstream_kickoff {
             "git_url": "${params.downstream_git_repo}",
             "git_hash": "${params.downstream_git_repo_hash}",
             "nextflow_profile": "${workflow.profile}",
-            "nextflow_workdir": "${workflow.workDir}",
+            "nextflow_workdir": "s3:/${workflow.workDir}",
             "nextflow_params": '${downstream_params}'
         }
         r = requests.post("${params.api_endpoint}/api/v1/workflow", 
