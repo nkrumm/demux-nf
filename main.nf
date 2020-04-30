@@ -5,7 +5,6 @@ params.demux_output_path = "s3://uwlm-ngs-data/demux/"
 params.sample_output_path = "s3://uwlm-ngs-data/samples/"
 params.downstream_git_repo = null
 params.downstream_git_repo_hash = "master"
-params.basemask = ""
 
 def demux_uuid = params.task_arn ?: UUID.randomUUID().toString()
 def demux_output_path = "${params.demux_output_path.replaceAll('[/]*$', '')}/${params.run_id}/${demux_uuid}/"
@@ -27,7 +26,7 @@ process preflight {
     memory '68 GB'
 
     script:
-        umi_options = params.basemask != "" ? "--is-umi --basemask ${params.basemask}" : ""
+        umi_options = params.basemask ? "--is-umi --basemask ${params.basemask}" : ""
         fwd_adapter = params.fwd_adapter ? "--fwd-adapter ${params.fwd_adapter}" : ""
         rev_adapter = params.rev_adapter ? "--rev-adapter ${params.rev_adapter}" : ""
         merge_lanes = params.merge_lanes ? "--merge-lanes" : ""
