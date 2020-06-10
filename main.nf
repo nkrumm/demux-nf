@@ -285,14 +285,15 @@ process finalize_libraries {
         if (fastqs.size() == 2) {
             out_fastqs = ["${library_path}/1.fastq.gz", "${library_path}/2.fastq.gz"]
             """
-            mv ${fastqs[0]} 1.fastq.gz
-            mv ${fastqs[1]} 2.fastq.gz
+            # if reads are not renamed yet, rename now
+            test ! -e 1.fastq.gz && mv ${fastqs[0]} 1.fastq.gz
+            test ! -e 2.fastq.gz && mv ${fastqs[1]} 2.fastq.gz
             aws s3 sync --only-show-errors --exclude "*" --include "*.fastq.gz" . ${library_path}/
             """
         } else {
             out_fastqs = ["${library_path}/1.fastq.gz"]
             """
-            mv ${fastqs[0]} 1.fastq.gz
+            test ! -e 1.fastq.gz && mv ${fastqs[0]} 1.fastq.gz
             aws s3 sync --only-show-errors --exclude "*" --include "*.fastq.gz" . ${library_path}/
             """
         }
