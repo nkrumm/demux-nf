@@ -114,6 +114,7 @@ demux_fastq_out_ch.flatMap()
           def key = tuple(lane, project_name, sample_id)
           return tuple(key, path)
     }
+    .view()
     .groupTuple() // group FASTQ files by key
     .map { key, files -> 
           // attach config information
