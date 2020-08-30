@@ -362,7 +362,7 @@ process multiqc {
     cpus 4
     input:
         path('*') from fastqc_report_ch.flatMap().collect()
-        //file("Stats.json") from stats_json_multiqc
+        file("Stats.json") from stats_json_multiqc
         path("interop/*") from interop_output
         //file('*') from trim_reads_report_ch.collect()
     output:
