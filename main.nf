@@ -285,13 +285,13 @@ process finalize_libraries {
         library_path = "${sample_output_path}/${config.Sample_Name}/${config.library_type}/${readgroup}"
 
         def meta_json_data = [
-          sample_id: config.Sample_Name,
-          barcode: "${config.index}-${config.index2}",
-          library_id: config.Sample_Name,
-          flowcell_id: params.fcid,
-          lane_id: lane,
-          library_Type: config.library_type,
-          readgroup: readgroup
+          "sample_id": config.Sample_Name,
+          "barcode": "${config.index}-${config.index2}",
+          "library_id": config.Sample_Name,
+          "flowcell_id": params.fcid,
+          "lane": "${lane}",
+          "library_Type": config.library_type,
+          "readgroup": "${readgroup}"
         ]
 
         def meta_json = JsonOutput.prettyPrint(JsonOutput.toJson(meta_json_data))
