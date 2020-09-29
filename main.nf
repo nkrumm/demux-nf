@@ -280,9 +280,9 @@ process finalize_libraries {
     output:
         tuple key, out_fastqs, config into downstream_kickoff_ch
     script: 
-        lane = key[0] // note this is either the lane number or "all" if params.merge_lanes == true
-        readgroup = "${params.fcid}.${lane}.${config.index}-${config.index2}"
-        library_path = "${sample_output_path}/${config.Sample_Name}/${config.library_type}/${readgroup}"
+        def lane = key[0] // note this is either the lane number or "all" if params.merge_lanes == true
+        def readgroup = "${params.fcid}.${lane}.${config.index}-${config.index2}"
+        def library_path = "${sample_output_path}/${config.Sample_Name}/${config.library_type}/${readgroup}"
 
         def meta_json_data = [
           "sample_id": config.Sample_Name,
