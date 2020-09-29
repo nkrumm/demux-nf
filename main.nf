@@ -289,7 +289,7 @@ process finalize_libraries {
           "barcode": "${config.index}-${config.index2}",
           "library_id": config.Sample_Name,
           "flowcell_id": params.fcid,
-          "lane": "${lane}",
+          "lane_id": "${lane}",
           "library_type": config.library_type,
           "readgroup": "${readgroup}"
         ]
