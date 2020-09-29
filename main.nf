@@ -290,7 +290,7 @@ process finalize_libraries {
           "library_id": config.Sample_Name,
           "flowcell_id": params.fcid,
           "lane": "${lane}",
-          "library_Type": config.library_type,
+          "library_type": config.library_type,
           "readgroup": "${readgroup}"
         ]
 
