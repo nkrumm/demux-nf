@@ -62,7 +62,7 @@ process demux {
         file("output/Stats")
         file("output/Stats/Stats.json") into stats_json_multiqc
         path("inputs/${params.run_id}/InterOp/*") into interop_input
-        file("inputs/${params.run_id}/RunInfo.xml") into interop_input_xml
+        file("inputs/${params.run_id}/*.xml") into interop_input_xml
 
     script:
         rundir = "inputs/${params.run_id}"
@@ -361,7 +361,7 @@ process interop {
     cpus 1
     input:
         path("${params.run_id}/InterOp/*") from interop_input
-        file("${params.run_id}/RunInfo.xml") from interop_input_xml
+        path("${params.run_id}/*") from interop_input_xml
     output:
         path("*.csv") into interop_output
 
