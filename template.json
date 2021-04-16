@@ -30,6 +30,11 @@
       "default": "s3://uwlm-ngs-data/samples/",
       "type": "string"
     },
+    "library_type": {
+      "title": "Library type ('exome', 'cdl', etc.)",
+      "default": "exome",
+      "type": "string"
+    },
     "fwd_adapter": {
       "title": "Forward adapter sequence (optional)",
       "default": "",
