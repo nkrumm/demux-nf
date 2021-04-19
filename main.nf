@@ -291,7 +291,8 @@ process finalize_libraries {
           "flowcell_id": params.fcid,
           "lane_id": "${lane}",
           "library_type": config.library_type,
-          "readgroup": "${readgroup}"
+          "readgroup": "${readgroup}",
+          "project_id": "Clinical",
         ]
 
         def meta_json = JsonOutput.prettyPrint(JsonOutput.toJson(meta_json_data))
