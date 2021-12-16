@@ -34,8 +34,78 @@ def defaultdict_to_regular(d):
         d = {k: defaultdict_to_regular(v) for k, v in d.items()}
     return d
 
-def parse_samplesheet(args):
-    ss = SampleSheet(args.input)
+def getHeaderKey(header):
+    fieldNum = 0
+    headerKey = {}
+    for headerField in header.rstrip().split(","):
+        headerKey[fieldNum] = headerField
+        fieldNum += 1
+    return headerKey
+
+def convert(infile, outfile):
+    samplesheet = []
+    lineNumber = 0
+    with open(infile) as input:
+        for line in input:
+            line = line.replace('"','').rstrip()
+            samplesheet.append(line)
+            if line.startswith("[Data]"):
+                dataStart = lineNumber + 1
+                legacy = False
+            elif line.startswith("FCID"):
+                dataStart = lineNumber
+                legacy = True
+            lineNumber += 1
+
+    header = samplesheet[dataStart]
+    header = header.replace("SampleProject", "Sample_Project")
+    header = header.replace(",Project,", ",Sample_Project,")
+    header = header.replace("SampleID", "Sample_ID")
+    header = header.replace("SampleName", "Sample_Name")
+    headerKey = getHeaderKey(header)
+    #print(headerKey)
+    parsedSampleSheet = []
+    for line in samplesheet[(dataStart+1):]:
+        line = line.rstrip()
+        parsedLine = {}
+        fieldNum = 0
+        for i in line.split(","):
+            parsedLine[headerKey[fieldNum]] = i
+            fieldNum += 1
+        if legacy:
+            if len(parsedLine["Index"]) > 0:
+                if "-" in parsedLine["Index"]:
+                    parsedLine["index"],parsedLine["index2"] = parsedLine["Index"].split("-")
+                else:
+                    parsedLine["index"] = parsedLine["Index"]
+                    parsedLine["index2"] = ""
+            else:
+                parsedLine["index"] = ""
+                parsedLine["index2"] = ""
+            parsedLine["Sample_Name"] = parsedLine["Sample_ID"]
+        if "Description" not in parsedLine:
+            parsedLine["Description"] = ""
+
+        parsedSampleSheet.append(parsedLine)
+
+
+    with open(outfile, "w") as out:
+        out.write("[Data]\n")
+        out.write("Lane,Sample_ID,Sample_Name,index,index2,Sample_Project,Description\n")
+        for newLine in parsedSampleSheet:
+            if "Lane" not in newLine:
+                newLine["Lane"] = ""
+            #if (lanes is None) or (newLine["Lane"] in lanes) or (newLine["Lane"] == ""):
+            out.write("{},{},{},{},{},{},{}\n".format(newLine["Lane"],
+                                                              newLine["Sample_ID"],
+                                                              newLine["Sample_Name"],
+                                                              newLine["index"],
+                                                              newLine["index2"],
+                                                              newLine["Sample_Project"],
+                                                              newLine["Description"]))
+
+def parse_samplesheet(infile, args):
+    ss = SampleSheet(infile)
     df = pd.DataFrame([s.to_json() for s in ss.samples])
     df["is_umi"] = args.is_umi
     df["fwd_adapter"] = args.fwd_adapter
@@ -94,7 +164,8 @@ def build_samplesheet(df, args):
     return samplesheet
 
 def main(args):
-    df = parse_samplesheet(args)
+    convert(args.input, "SampleSheet.csv")
+    df = parse_samplesheet("SampleSheet.csv", args)
     
     config = build_config(df, args)
     samplesheet = build_samplesheet(df, args)
